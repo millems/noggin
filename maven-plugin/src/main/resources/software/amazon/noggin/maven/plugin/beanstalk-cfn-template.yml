@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  BeanstalkRoutesClass:
+    Type: "String"
+
+  BeanstalkCodeS3Bucket:
+    Type: "String"
+
+  BeanstalkCodeS3Object:
+    Type: "String"
+
+Resources:
+  BeanstalkApplication:
+    Type: AWS::ElasticBeanstalk::Application
+    Properties:
+      Description: "Noggin Generated Application"
+
+  BeanstalkApplicationVersion:
+    Type: AWS::ElasticBeanstalk::ApplicationVersion
+    Properties:
+      ApplicationName:
+        Ref: BeanstalkApplication
+      Description: "Noggin Generated Application Version"
+      SourceBundle:
+        S3Bucket: !Ref "BeanstalkCodeS3Bucket"
+        S3Key: !Ref "BeanstalkCodeS3Object"
+
+  BeanstalkConfigurationTemplate:
+    Type: AWS::ElasticBeanstalk::ConfigurationTemplate
+    Properties:
+      ApplicationName:
+        Ref: BeanstalkApplication
+      Description: "Noggin Generated Configuration Template"
+      OptionSettings:
+      - Namespace: aws:autoscaling:asg
+        OptionName: MinSize
+        Value: '2'
+      - Namespace: aws:autoscaling:asg
+        OptionName: MaxSize
+        Value: '6'
+      - Namespace: aws:elasticbeanstalk:environment
+        OptionName: EnvironmentType
+        Value: LoadBalanced
+      - Namespace: aws:elasticbeanstalk:application:environment
+        OptionName: NOGGIN_ROUTES_CLASS
+        Value: !Ref "BeanstalkRoutesClass"
+      SolutionStackName: "64bit Amazon Linux 2018.03 v2.7.8 running Java 8"
+
+  BeanstalkEnvironment:
+    Type: AWS::ElasticBeanstalk::Environment
+    Properties:
+      ApplicationName:
+        Ref: BeanstalkApplication
+      Description: "Noggin Generated Environment"
+      TemplateName:
+        Ref: BeanstalkConfigurationTemplate
+      VersionLabel:
+        Ref: BeanstalkApplicationVersion
+
+Outputs:
+  BeanstalkInvokeURL:
+    Value:
+      Fn::GetAtt:
+        - BeanstalkEnvironment
+        - EndpointURL

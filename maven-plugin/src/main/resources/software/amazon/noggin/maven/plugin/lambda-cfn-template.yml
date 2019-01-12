@@ -1,0 +1,136 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  ApiGatewayStageName:
+    Type: "String"
+
+  ApiGatewayApiName:
+    Type: "String"
+
+  LambdaFunctionName:
+    Type: "String"
+
+  LambdaRoutesClass:
+    Type: "String"
+
+  LambdaCodeS3Bucket:
+    Type: "String"
+
+  LambdaCodeS3Object:
+    Type: "String"
+
+Resources:
+  ApiGatewayRestApi:
+    Type: "AWS::ApiGateway::RestApi"
+    Properties:
+      Name: !Ref "ApiGatewayApiName"
+      Description: "Noggin Generated API"
+
+  ApiGatewayCatchAllResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      ParentId: !GetAtt "ApiGatewayRestApi.RootResourceId"
+      RestApiId: !Ref "ApiGatewayRestApi"
+      PathPart: '{all+}'
+
+  ApiGatewayRootMethod:
+    Type: "AWS::ApiGateway::Method"
+    Properties:
+      AuthorizationType: "NONE"
+      HttpMethod: "ANY"
+      Integration:
+        IntegrationHttpMethod: "POST"
+        Type: "AWS_PROXY"
+        Uri: !Sub
+        - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations"
+        - LambdaArn: !GetAtt "LambdaFunction.Arn"
+      ResourceId: !GetAtt "ApiGatewayRestApi.RootResourceId"
+      RestApiId: !Ref "ApiGatewayRestApi"
+
+  ApiGatewayCatchAllMethod:
+    Type: "AWS::ApiGateway::Method"
+    Properties:
+      AuthorizationType: "NONE"
+      HttpMethod: "ANY"
+      Integration:
+        IntegrationHttpMethod: "POST"
+        Type: "AWS_PROXY"
+        Uri: !Sub
+        - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations"
+        - LambdaArn: !GetAtt "LambdaFunction.Arn"
+      ResourceId: !Ref "ApiGatewayCatchAllResource"
+      RestApiId: !Ref "ApiGatewayRestApi"
+
+  ApiGatewayDeployment:
+    Type: "AWS::ApiGateway::Deployment"
+    DependsOn:
+    - "ApiGatewayRootMethod"
+    Properties:
+      RestApiId: !Ref "ApiGatewayRestApi"
+      StageName: !Ref "ApiGatewayStageName"
+
+  LambdaFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code:
+        S3Bucket: !Ref "LambdaCodeS3Bucket"
+        S3Key: !Ref "LambdaCodeS3Object"
+      Description: "My function"
+      Environment:
+        Variables:
+          NOGGIN_ROUTES_CLASS: !Ref "LambdaRoutesClass"
+      FunctionName: !Ref "LambdaFunctionName"
+      Handler: "software.amazon.noggin.runtime.lambda.LambdaApplication::handle"
+      MemorySize: 512
+      Role: !GetAtt "LambdaIamRole.Arn"
+      Runtime: "java8"
+      Timeout: 30
+
+  LambdaApiGatewayInvoke:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !GetAtt "LambdaFunction.Arn"
+      Principal: "apigateway.amazonaws.com"
+
+  LambdaIamRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Action:
+          - "sts:AssumeRole"
+          Effect: "Allow"
+          Principal:
+            Service:
+            - "lambda.amazonaws.com"
+      Policies:
+      - PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+          - Action:
+            - "logs:CreateLogGroup"
+            - "logs:CreateLogStream"
+            - "logs:PutLogEvents"
+            Effect: "Allow"
+            Resource:
+            - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${LambdaFunctionName}:*"
+        PolicyName: "lambda"
+
+  LambdaLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${LambdaFunctionName}"
+      RetentionInDays: 90
+
+Outputs:
+  ApiGatewayInvokeURL:
+    Value: !Sub "https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${ApiGatewayStageName}"
+
+  ApiGatewayRestApiId:
+    Value: !Ref "ApiGatewayRestApi"
+
+  ApiGatewayStageName:
+    Value: !Ref "ApiGatewayStageName"
+
